@@ -1,0 +1,6 @@
+#include <stdio.h>
+int main()
+{
+printf("gagaga");
+return 0;
+}
