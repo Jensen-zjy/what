@@ -1,0 +1,15 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    int n;
+    printf("请输入要打印的次数: ");
+    if (scanf("%d", &n) != 1 || n <= 0) {
+        fprintf(stderr, "无效的次数\n");
+        return 1;
+    }
+    for (int i = 0; i < n; ++i) {
+        printf("gagaga\n");
+    }
+    return 0;
+}
