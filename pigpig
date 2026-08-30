@@ -1,0 +1,53 @@
+import turtle
+
+def draw_circle(t, x, y, r, color):
+    t.up(); t.goto(x, y - r); t.down()
+    t.fillcolor(color); t.begin_fill()
+    t.circle(r)
+    t.end_fill()
+
+def draw_pig():
+    screen = turtle.Screen()
+    screen.setup(800, 600)
+    t = turtle.Turtle()
+    t.hideturtle()
+    t.speed(0)
+    # Body
+    t.up(); t.goto(-120, -20); t.setheading(0)
+    t.down(); t.color('black', '#ffb6c1')
+    t.begin_fill()
+    t.right(30)
+    for _ in range(2):
+        t.circle(120,90)
+        t.circle(60,90)
+    t.end_fill()
+    # Head (circle)
+    draw_circle(t, 100, 40, 60, '#ffb6c1')
+    # Snout
+    draw_circle(t, 140, 20, 28, '#ffc0cb')
+    # Nostrils
+    draw_circle(t, 130, 30, 6, 'black')
+    draw_circle(t, 150, 30, 6, 'black')
+    # Eyes
+    draw_circle(t, 85, 70, 8, 'black')
+    draw_circle(t, 115, 70, 8, 'black')
+    # Ears
+    t.up(); t.goto(60, 100); t.down(); t.color('black', '#ffb6c1')
+    t.begin_fill()
+    t.setheading(60)
+    t.forward(30); t.right(120); t.forward(40)
+    t.end_fill()
+    t.up(); t.goto(140, 100); t.down(); t.begin_fill()
+    t.setheading(120)
+    t.forward(30); t.left(120); t.forward(40)
+    t.end_fill()
+    # Tail (simple curl)
+    t.up(); t.goto(-160, 40); t.setheading(0); t.down()
+    for i in range(12):
+        t.forward(6 - i*0.4)
+        t.right(20)
+    t.up()
+    screen.mainloop()
+
+if __name__ == "__main__":
+    draw_pig()
