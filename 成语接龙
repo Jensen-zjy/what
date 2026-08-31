@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+成语接龙小游戏（命令行）
+用法: python3 game.py
+成语词库从同目录下的 idioms.txt 加载（每行一个成语，UTF-8）
+"""
+
+import random
+import sys
+import os
+
+IDIOMS_FILE = "idioms.txt"
+
+def load_idioms(path):
+    if not os.path.exists(path):
+        print(f"找不到成语库文件: {path}")
+        sys.exit(1)
+    with open(path, "r", encoding="utf-8") as f:
+        idioms = [line.strip() for line in f if line.strip()]
+    # 去重并保持列表形式
+    seen = set()
+    uniq = []
+    for i in idioms:
+        if i not in seen:
+            seen.add(i)
+            uniq.append(i)
+    return uniq
+
+def last_char(s):
+    return s.strip()[-1]
+
+def first_char(s):
+    return s.strip()[0]
+
+def find_candidates(idioms_set, start_char, used):
+    return [w for w in idioms_set if first_char(w) == start_char and w not in used]
+
+def sanitize(s):
+    return s.strip()
+
+def main():
+    idioms = load_idioms(IDIOMS_FILE)
+    idioms_set = idioms  # list is fine for ordering; we'll use membership on set when needed
+    idioms_lookup = set(idioms)
+
+    print("欢迎来到 成语接龙（命中接龙）小游戏！")
+    print("规则：输入一个成语，首字需与上一个成语的末字相同，且成语必须在词库中且未被使用。")
+    print('命令: 输入 "hint" 获取一个提示，输入 "退出" 或 "exit" 结束游戏。')
+    print()
+
+    mode = ""
+    while mode not in ("1","2"):
+        mode = input("选择模式：1) 你先  2) 电脑先 （输入1或2）: ").strip()
+    used = set()
+    rounds = 0
+    player_score = 0
+    cpu_score = 0
+
+    current = None
+    if mode == "2":
+        # 电脑先手
+        current = random.choice(idioms)
+        used.add(current)
+        rounds += 1
+        print(f"电脑先手：{current}")
+
+    while True:
+        # 玩家回合
+        if current is None:
+            # 要求玩家给出第一个成语
+            prompt = "请出第一个成语: "
+            expected_start = None
+        else:
+            expected_start = last_char(current)
+            prompt = f"请接 \"{current}\" （首字应为 {expected_start}）: "
+
+        user_in = input(prompt).strip()
+        if not user_in:
+            print("请输入成语或命令。")
+            continue
+        if user_in.lower() in ("退出","exit"):
+            print("游戏结束。")
+            break
+        if user_in.lower() == "hint":
+            # 给一个可接的成语（如果有）
+            if expected_start is None:
+                sample = random.choice([w for w in idioms if w not in used])
+                print("提示（随机）:", sample)
+            else:
+                cand = find_candidates(idioms, expected_start, used)
+                if not cand:
+                    print("没有可接的成语了（提示为空）。")
+                else:
+                    print("提示:", random.choice(cand))
+            continue
+
+        user_in = sanitize(user_in)
+
+        # 基本校验
+        if user_in not in idioms_lookup:
+            print("成语不在词库中，或格式不正确。可输入 'hint' 获取提示。")
+            continue
+        if user_in in used:
+            print("这个成语已经被使用过了，请换一个。")
+            continue
+        if expected_start is not None and first_char(user_in) != expected_start:
+            print(f"首字不匹配，上一个成语末字是 '{expected_start}'。")
+            continue
+
+        # 玩家接成功
+        used.add(user_in)
+        rounds += 1
+        player_score += 1
+        current = user_in
+        print(f"你: {user_in}")
+
+        # 电脑回合：找出以 current 末字开头的成语
+        next_start = last_char(current)
+        candidates = find_candidates(idioms, next_start, used)
+        if not candidates:
+            print(f"电脑无可接成语，恭喜你获胜！共进行 {rounds} 轮，你得分 {player_score}，电脑得分 {cpu_score}")
+            break
+
+        cpu_choice = random.choice(candidates)
+        used.add(cpu_choice)
+        rounds += 1
+        cpu_score += 1
+        current = cpu_choice
+        print(f"电脑: {cpu_choice} （末字：{last_char(cpu_choice)}）")
+        # 游戏继续，回到玩家回合
+
+    print("最终统计：")
+    print(f"回合数: {rounds}")
+    print(f"你: {player_score}， 电脑: {cpu_score}")
+    print("谢谢游玩！如需更改规则（例如电脑策略、提示数目或联网词库），可以告诉我。")
+
+if __name__ == "__main__":
+    main()
