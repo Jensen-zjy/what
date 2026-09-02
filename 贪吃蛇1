@@ -1,0 +1,260 @@
+/* name=snake.c
+   简单贪吃蛇（Linux / macOS）
+   编译: gcc -std=c99 -O2 -o snake snake.c
+   运行: ./snake
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <time.h>
+#include <termios.h>
+#include <unistd.h>
+#include <sys/select.h>
+#include <string.h>
+
+#define WIDTH 40
+#define HEIGHT 20
+#define INIT_LEN 4
+#define MAX_SNAKE (WIDTH * HEIGHT)
+
+struct Point {
+    int x, y;
+};
+
+static struct termios orig_termios;
+
+void disable_raw_mode() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+    printf("\033[?25h"); // show cursor
+}
+
+void enable_raw_mode() {
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    atexit(disable_raw_mode);
+
+    struct termios raw = orig_termios;
+    raw.c_lflag &= ~(ECHO | ICANON); // turn off echo and canonical
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    printf("\033[?25l"); // hide cursor
+}
+
+int kbhit() {
+    struct timeval tv = {0L, 0L};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+}
+
+// read key, handle arrow sequences. returns char codes: 'w','a','s','d', 'q' for quit, 0 none
+int read_input() {
+    if (!kbhit()) return 0;
+    char c;
+    if (read(STDIN_FILENO, &c, 1) != 1) return 0;
+    if (c == '\x1b') { // possible escape seq
+        char seq[2];
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) return 0;
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) return 0;
+        if (seq[0] == '[') {
+            if (seq[1] == 'A') return 'w';
+            if (seq[1] == 'B') return 's';
+            if (seq[1] == 'C') return 'd';
+            if (seq[1] == 'D') return 'a';
+        }
+        return 0;
+    } else {
+        if (c == 'w' || c == 'a' || c == 's' || c == 'd' || c == 'q' ||
+            c == 'W' || c == 'A' || c == 'S' || c == 'D' || c == 'Q') {
+            if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
+            return (int)c;
+        }
+    }
+    return 0;
+}
+
+void clear_screen() {
+    printf("\033[2J"); // clear screen
+    printf("\033[H");  // move cursor to home
+}
+
+void move_cursor_top() {
+    printf("\033[H");
+}
+
+int rand_range(int a, int b) {
+    return a + rand() % (b - a + 1);
+}
+
+int main() {
+    srand((unsigned)time(NULL));
+    enable_raw_mode();
+    clear_screen();
+
+    struct Point snake[MAX_SNAKE];
+    int len = INIT_LEN;
+    int dirx = 1, diry = 0; // moving right initially
+
+    // init snake in center
+    int cx = WIDTH / 2;
+    int cy = HEIGHT / 2;
+    for (int i = 0; i < len; ++i) {
+        snake[i].x = cx - i;
+        snake[i].y = cy;
+    }
+
+    struct Point food;
+    bool occupied[HEIGHT][WIDTH];
+    memset(occupied, 0, sizeof(occupied));
+
+    auto place_food = [&]() {
+        // mark occupied
+        for (int y = 0; y < HEIGHT; ++y)
+            for (int x = 0; x < WIDTH; ++x)
+                occupied[y][x] = false;
+        for (int i = 0; i < len; ++i) {
+            occupied[snake[i].y][snake[i].x] = true;
+        }
+        // find free cell
+        int fx, fy;
+        int tries = 0;
+        do {
+            fx = rand_range(0, WIDTH - 1);
+            fy = rand_range(0, HEIGHT - 1);
+            tries++;
+            if (tries > 10000) break;
+        } while (occupied[fy][fx]);
+        food.x = fx;
+        food.y = fy;
+    };
+
+    place_food();
+
+    bool gameover = false;
+    int score = 0;
+    int speed_us = 150000; // initial delay in microseconds
+
+    while (!gameover) {
+        // input
+        int key = read_input();
+        if (key) {
+            if (key == 'q') { gameover = true; break; }
+            int ndx = dirx, ndy = diry;
+            if (key == 'w') { ndx = 0; ndy = -1; }
+            if (key == 's') { ndx = 0; ndy = 1; }
+            if (key == 'a') { ndx = -1; ndy = 0; }
+            if (key == 'd') { ndx = 1; ndy = 0; }
+            // prevent immediate reverse
+            if (!(ndx == -dirx && ndy == -diry)) {
+                dirx = ndx; diry = ndy;
+            }
+        }
+
+        // compute new head
+        struct Point new_head = { snake[0].x + dirx, snake[0].y + diry };
+
+        // wall collision
+        if (new_head.x < 0 || new_head.x >= WIDTH || new_head.y < 0 || new_head.y >= HEIGHT) {
+            gameover = true;
+            break;
+        }
+
+        // self collision
+        for (int i = 0; i < len; ++i) {
+            if (snake[i].x == new_head.x && snake[i].y == new_head.y) {
+                gameover = true;
+                break;
+            }
+        }
+        if (gameover) break;
+
+        // move snake: shift body
+        for (int i = len; i > 0; --i) {
+            snake[i] = snake[i - 1];
+        }
+        snake[0] = new_head;
+
+        // eat food?
+        if (new_head.x == food.x && new_head.y == food.y) {
+            len++;
+            if (len > MAX_SNAKE) len = MAX_SNAKE;
+            score += 10;
+            // speed up a bit
+            if (speed_us > 40000) speed_us = (int)(speed_us * 0.95);
+            place_food();
+        } else {
+            // if not eating, drop tail (we already shifted, so reduce length back)
+            // keep len unchanged: tail overwritten when shifting; but we incremented array index above when shifting,
+            // so ensure we do not grow: just ignore last element (len stays same).
+            // (Implementation already keeps len same unless eaten)
+        }
+
+        // draw
+        move_cursor_top();
+        // top border
+        for (int x = 0; x < WIDTH + 2; ++x) putchar('#');
+        putchar('\n');
+
+        for (int y = 0; y < HEIGHT; ++y) {
+            putchar('#');
+            for (int x = 0; x < WIDTH; ++x) {
+                char ch = ' ';
+                if (x == food.x && y == food.y) ch = 'O';
+                else {
+                    for (int i = 0; i < len; ++i) {
+                        if (snake[i].x == x && snake[i].y == y) {
+                            if (i == 0) ch = '@'; // head
+                            else ch = '#';
+                            break;
+                        }
+                    }
+                }
+                putchar(ch);
+            }
+            putchar('#');
+            putchar('\n');
+        }
+
+        // bottom border
+        for (int x = 0; x < WIDTH + 2; ++x) putchar('#');
+        putchar('\n');
+
+        // status
+        printf("Score: %d   Length: %d   (WASD or arrows to move, Q to quit)\n", score, len);
+
+        fflush(stdout);
+
+        // sleep
+        usleep(speed_us);
+    }
+
+    // game over screen
+    move_cursor_top();
+    // draw final screen
+    for (int x = 0; x < WIDTH + 2; ++x) putchar('#');
+    putchar('\n');
+    for (int y = 0; y < HEIGHT; ++y) {
+        putchar('#');
+        for (int x = 0; x < WIDTH; ++x) {
+            char ch = ' ';
+            for (int i = 0; i < len; ++i) {
+                if (snake[i].x == x && snake[i].y == y) {
+                    if (i == 0) ch = '@';
+                    else ch = '#';
+                    break;
+                }
+            }
+            putchar(ch);
+        }
+        putchar('#');
+        putchar('\n');
+    }
+    for (int x = 0; x < WIDTH + 2; ++x) putchar('#');
+    putchar('\n');
+
+    printf("Game Over! Final score: %d  Length: %d\n", score, len);
+    disable_raw_mode();
+    return 0;
+}
